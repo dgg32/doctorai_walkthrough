@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: doctorai
+
+
+Globals:
+  Function:
+    Timeout: 15
+    Environment:
+      Variables:
+        language: 'en'
+
+
+Resources:
+  ## S3 buckets
+  Neo4jBucket:
+    Type: AWS::S3::Bucket  
+
+  Neo4jSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Inbound rules for neo4j instance
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 22
+        ToPort: 22
+      - IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 7474
+        ToPort: 7474
+      - IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 7687
+        ToPort: 7687
+
+  Neo4jInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SecurityGroupIds:
+        - !Ref Neo4jSecurityGroup
+      ImageId: ami-0a041a294ad6458af
+      InstanceType: m4.large
+      KeyName : cloudformation
+
+  LexLambdaFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: DoctorAI_Lambda_Main/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      MemorySize: 128
+
+Outputs: 
+  LexLambdaFunctionName:
+    Description: The name of lex lambda function
+    Value: !Ref LexLambdaFunction
+
+  Neo4jInstancePublicIp:
+    Description: The public IP address of the Neo4j server
+    Value: !GetAtt Neo4jInstance.PublicIp

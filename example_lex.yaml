@@ -1,0 +1,148 @@
+# OrderFlower bot consists of the following
+# 1. IAM role used by the bot at runtime
+# 2. Inline Bot
+# 3. Bot Version
+# 4. Alias
+Resources:
+  # 1. IAM role used by the Amazon Lex service to make runtime calls
+  BotRuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lexv2.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: LexRuntimeRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "polly:SynthesizeSpeech"
+                  - "comprehend:DetectSentiment"
+                Resource: "*"
+ 
+  # 2. The inline bot definition depends on the IAM role.
+  # The bot definition combines all child resources into one CFN resource.
+  # This includes Locales, Intents, Slots, SlotTypes.
+  OrderFlowersTemplateBot:
+    DependsOn: BotRuntimeRole
+    Type: AWS::Lex::Bot
+    Properties:
+      Name: "OrderFlowersWithCFN"
+      RoleArn: !GetAtt BotRuntimeRole.Arn
+      DataPrivacy:
+        ChildDirected: false
+      IdleSessionTTLInSeconds: 300
+      Description: "How to create a OrderFlowers bot with AWS CloudFormation"
+      # We provide a setting that enables you to auto build the locales.
+      # Locale builds are also kicked off if you attempt to create a bot version that depends on an unbuilt locale.
+      AutoBuildBotLocales: false
+      BotLocales:
+        - LocaleId: "en_US"
+          Description: "Book a trip bot Locale"
+          NluConfidenceThreshold: 0.40
+          VoiceSettings:
+            VoiceId: "Ivy"
+          SlotTypes:
+            - Name: "FlowerTypes"
+              Description: "Slot Type description"
+              SlotTypeValues:
+                - SampleValue:
+                    Value: lilies
+                - SampleValue:
+                    Value: roses
+                - SampleValue:
+                    Value: tulips
+              ValueSelectionSetting:
+                ResolutionStrategy: ORIGINAL_VALUE
+          Intents:
+            - Name: "OrderFlowers"
+              Description: "Intent to order a bouquet of flowers for pick up"
+              SampleUtterances:
+                - Utterance: "I would like to pick up flowers"
+                - Utterance: "I would like to order some flowers"
+              IntentConfirmationSetting:
+                PromptSpecification:
+                  MessageGroupsList:
+                    - Message:
+                        PlainTextMessage:
+                          Value: "Okay, your {FlowerType} will be ready for pickup by {PickupTime} on {PickupDate}.  Does this sound okay?"
+                  MaxRetries: 3
+                  AllowInterrupt: false
+                DeclinationResponse:
+                  MessageGroupsList:
+                    - Message:
+                        PlainTextMessage:
+                          Value: "Okay, I will not place your order."
+                  AllowInterrupt: false
+              Slots:
+                - Name: "FlowerType"
+                  Description: "something"
+                  SlotTypeName: "FlowerTypes"
+                  ValueElicitationSetting:
+                    SlotConstraint: "Required"
+                    PromptSpecification:
+                      MessageGroupsList:
+                        - Message:
+                            PlainTextMessage:
+                              Value: "What type of flowers would you like to order?"
+                      MaxRetries: 3
+                      AllowInterrupt: false
+                - Name: "PickUpDate"
+                  Description: "something"
+                  SlotTypeName: "AMAZON.Date"
+                  ValueElicitationSetting:
+                    SlotConstraint: "Required"
+                    PromptSpecification:
+                      MessageGroupsList:
+                        - Message:
+                            PlainTextMessage:
+                              Value: "What day do you want the {FlowerType} to be picked up?"
+                      MaxRetries: 3
+                      AllowInterrupt: false
+                - Name: "PickUpTime"
+                  Description: "something"
+                  SlotTypeName: "AMAZON.Time"
+                  ValueElicitationSetting:
+                    SlotConstraint: "Required"
+                    PromptSpecification:
+                      MessageGroupsList:
+                        - Message:
+                            PlainTextMessage:
+                              Value: "At what time do you want the {FlowerType} to be picked up?"
+                      MaxRetries: 3
+                      AllowInterrupt: false
+            - Name: "FallbackIntent"
+              Description: "Default intent when no other intent matches"
+              ParentIntentSignature: "AMAZON.FallbackIntent"
+ 
+  # 3. We define a bot version which depends on the DRAFT version of the Amazon Lex Bot.
+  OrderFlowersTemplateBotVersionWithCFN:
+    DependsOn: OrderFlowersTemplateBot
+    Type: AWS::Lex::BotVersion
+    Properties:
+      BotId: !Ref OrderFlowersTemplateBot
+      BotVersionLocaleSpecification:
+        - LocaleId: en_US
+          BotVersionLocaleDetails:
+            SourceBotVersion: DRAFT
+      Description: OrderFlowers Version
+ 
+  # 4. We define the alias by providing the bot version created by the AWS::Lex::BotVersion resource above.
+  FirstBotAliasWithCFN:
+    DependsOn: OrderFlowersTemplateBotVersionWithCFN
+    Type: AWS::Lex::BotAlias
+    Properties:
+      BotId: !Ref OrderFlowersTemplateBot
+      BotAliasName: "OrderFlowersVersion1Alias"
+      BotVersion: !GetAtt OrderFlowersTemplateBotVersionWithCFN.BotVersion
+      SentimentAnalysisSettings:
+        DetectSentiment: true
