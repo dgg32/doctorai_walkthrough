@@ -2,6 +2,29 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: doctorai
 
+Parameters:
+  Neo4jPasswordString:
+    Type: String
+    Default: 'mysecretpassword'
+    NoEcho: true
+  FrontendRepoURL:
+    Type: String
+    Default: ''
+  AccessKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+  AccessKeySecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+  BotID:
+    Type: String
+    Default: ''
+  GithubOAuthToken:
+    Type: String
+    Default: ''
+    NoEcho: true
 
 Globals:
   Function:
@@ -11,10 +34,7 @@ Globals:
         language: 'en'
 
 
-Resources:
-  ## S3 buckets
-  Neo4jBucket:
-    Type: AWS::S3::Bucket  
+Resources: 
 
   Neo4jSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -43,13 +63,90 @@ Resources:
       InstanceType: m4.large
       KeyName : cloudformation
 
+  LexLambdaTestRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -  
+            Effect: "Allow"
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "AllowInvoke"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action: "lambda:InvokeFunction"
+                Resource: "*"
+                  #- !GetAtt LambdaRDSManageConnections.Arn
+                  #- !GetAtt LambdaRDSTest.Arn
+        - 
+          PolicyName: "AllowSM"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action: "secretsmanager:*"
+                Resource: "*"                   
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+
   LexLambdaFunction:
     Type: AWS::Serverless::Function 
     Properties:
       CodeUri: DoctorAI_Lambda_Main/
       Handler: lambda_function.lambda_handler
       Runtime: python3.8
+      Role: !GetAtt LexLambdaTestRole.Arn
       MemorySize: 128
+      Environment:
+        Variables:
+          Neo4jIp: !GetAtt Neo4jInstance.PublicIp
+          SECRET_NAME: !Ref Neo4jPasswordSecret
+
+  Neo4jPasswordSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: PasswordForNeo4j
+      Description: This secret has a hardcoded password in SecretString (use GenerateSecretString instead)
+      SecretString: !Join ['', ['{"username":"neo4j","password":"', !Ref Neo4jPasswordString, '"}' ]]
+
+
+  Frontend:
+    Type: AWS::Amplify::App
+    Properties: 
+      AccessToken: !Ref GithubOAuthToken
+      EnvironmentVariables: 
+        - Name: REACT_APP_AWS_ACCESS_KEY
+          Value: !Ref AccessKey
+        - Name: REACT_APP_AWS_REGION
+          Value: !Ref "AWS::Region"
+        - Name: REACT_APP_AWS_SECRET
+          Value: !Ref AccessKeySecret
+        - Name: REACT_APP_AWS_USERID
+          Value: !Ref "AWS::AccountId"
+        - Name: REACT_APP_LEX_botAliasId
+          Value: TestBotAlias
+        - Name: REACT_APP_LEX_botId
+          Value: !Ref BotID
+        - Name: REACT_APP_LEX_localeId
+          Value: en_US
+        - Name: REACT_APP_LEX_sessionId
+          Value: test_session
+      Name: Doctorai-frontend
+      Repository: !Ref FrontendRepoURL
+
 
 Outputs: 
   LexLambdaFunctionName:
@@ -59,3 +156,11 @@ Outputs:
   Neo4jInstancePublicIp:
     Description: The public IP address of the Neo4j server
     Value: !GetAtt Neo4jInstance.PublicIp
+
+  Neo4jInstancePublicDNS:
+    Description: The public domain name of the Neo4j server
+    Value: !GetAtt Neo4jInstance.PublicDnsName
+
+  FrontendURL:
+    Description: The public domain name of the React Frondend
+    Value: !GetAtt Frontend.DefaultDomain

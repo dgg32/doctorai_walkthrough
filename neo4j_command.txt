@@ -1,0 +1,142 @@
+aws configure
+sudo aws s3 cp s3://neo4jrepo.sg/HCAI/import/ /var/lib/neo4j/import/ --recursive
+
+
+
+CREATE CONSTRAINT ON (h:Hospital) ASSERT h.hospitalid IS UNIQUE;
+CREATE CONSTRAINT ON (p:Patient) ASSERT p.patient_id IS UNIQUE;
+CREATE CONSTRAINT ps_id_cstr ON (ps:PatientUnitStay) ASSERT ps.patientunitstayid IS UNIQUE;
+CREATE CONSTRAINT treatment_id_cstr ON (t:Treatment) ASSERT t.treatmentid IS UNIQUE;
+create index lab_psid_ind IF NOT EXISTS for (l:Lab) on (l.patientunitstayid);
+CREATE CONSTRAINT ON (ds:DiagString) ASSERT ds.dx IS UNIQUE;
+CREATE CONSTRAINT ON (dc:DiagCategory) ASSERT dc.category IS UNIQUE;
+CREATE CONSTRAINT diag_id_cstr ON (d:Diagnosis) ASSERT d.diagnosisid IS UNIQUE;
+
+
+CALL apoc.periodic.iterate(
+    "LOAD CSV WITH HEADERS FROM 'file:///icustay_detail.gz' AS row 
+    return row",
+    "MERGE (p:Patient {patient_id: row.uniquepid})
+    set p.ethnicity = row.ethnicity, 
+    p.gender = row.gender,
+    p.age = toInteger(row.age) 
+    MERGE (ps:PatientUnitStay {patientunitstayid: row.patientunitstayid})
+    set ps.unittype = row.unittype,
+    ps.hospitaladmitoffset = toInteger(row.hospitaladmitoffset),
+    ps.hospitaldischargeoffset = toInteger(row.hospitaldischargeoffset),
+    ps.unitadmitoffset = toInteger(row.unitadmitoffset),
+    ps.unitdischargeoffset = toInteger(row.unitdischargeoffset),
+    ps.hospitaldischargeyear = toInteger(row.hospitaldischargeyear),
+    ps.hosp_mort = toInteger(row.hosp_mort),
+    ps.icu_los_hours = toInteger(row.icu_los_hours)
+
+MERGE (h:Hospital {hospitalid: row.hospitalid})
+    set h.region = row.region
+
+Merge(p)-[r1:HAS_STAY]->(ps)
+Merge(ps)-[r2:WENT_HOSP]->(h)",
+{batchSize: 5000, parallel:false}
+); 
+
+CALL apoc.periodic.iterate(
+    "LOAD CSV WITH HEADERS FROM 'file:///treatment000000000000.csv.gz' AS row 
+    return row",
+    "MERGE (t:Treatment { treatmentid: row.treatmentid })
+     set t.treatmentoffset = toInteger(row.treatmentoffset),
+         t.treatmentstring = row.treatmentstring,
+         t.activeupondischarge = toBoolean (row.activeupondischarge)
+with t,row
+match(ps:PatientUnitStay { patientunitstayid: row.patientunitstayid})
+merge (ps)-[r:HAS_TREATMENT]->(t)",
+{batchSize: 5000, parallel:false}
+); 
+
+CALL apoc.periodic.iterate(
+    "LOAD CSV WITH HEADERS FROM 'file:///pivoted_lab.gz' AS row  
+    return row",
+    "create (l:Lab { patientunitstayid: row.patientunitstayid })
+        set l.chartoffset = toInteger(coalesce(row.labresultoffset,0)),
+         l.albumin = toFloat(coalesce(row.albumin,0)),
+         l.bilirubin = toFloat(coalesce(row.bilirubin,0)),
+         l.BUN = toInteger(coalesce(row.BUN,0)),
+         l.calcium = toFloat(coalesce(row.calcium,0)),
+         l.creatinine = toFloat(coalesce(row.creatinine,0)),
+         l.glucose = toInteger(coalesce(row.glucose,0)),
+         l.bicarbonate = toInteger(coalesce(row.bicarbonate,0)),
+         l.TotalCO2 = toInteger(coalesce(row.TotalCO2,0)),
+         l.hematocrit = toFloat(coalesce(row.hematocrit,0)),
+         l.hemoglobin = toFloat(coalesce(row.hemoglobin,0)),
+         l.INR = toFloat(coalesce(row.INR,0)),
+         l.lactate = toFloat(coalesce(row.lactate,0)),
+         l.platelets = toInteger(coalesce(row.platelets,0)),
+         l.potassium = toFloat(coalesce(row.potassium,0)),
+         l.ptt = toInteger(coalesce(row.ptt,0)),
+         l.sodium = toInteger(coalesce(row.sodium,0)),
+         l.wbc = toFloat(coalesce(row.wbc,0)),
+         l.bands = toFloat(coalesce(row.bands,0)),
+         l.alt = toInteger(coalesce(row.alt,0)),
+         l.ast = toInteger(coalesce(row.ast,0)),
+         l.alp = toInteger(coalesce(row.alp,0))
+
+with l,row
+match(ps:PatientUnitStay { patientunitstayid: row.patientunitstayid})
+merge (ps)-[r:HAS_LAB]->(l)",
+{batchSize: 5000, parallel:false}
+); 
+
+
+LOAD CSV WITH HEADERS FROM 'file:///diagnosis_categories.gz' AS row 
+Merge (dc:DiagCategory { category: row.category })
+with dc,row.dx as dxrow
+unwind split(dxrow,'|') as dxrow2
+Match (ds:DiagString { dx: dxrow2})
+Merge (ds)-[r:BELONGS]->(dc);
+
+
+
+CALL apoc.periodic.iterate(
+    "LOAD CSV WITH HEADERS FROM 'file:///diagnosis000000000000.csv.gz' AS row  
+    return row",
+    "Merge (d:Diagnosis { diagnosisid: row.diagnosisid })
+    set d.activeupondischarge=toBoolean(row.activeupondischarge),
+        d.diagnosisoffset=toInteger(row.diagnosisoffset),
+        d.diagnosisstring=row.diagnosisstring,
+        d.icd9code=row.icd9code,
+        d.diagnosispriority=row.diagnosispriority
+with d,row.patientunitstayid as psid
+match(ps:PatientUnitStay { patientunitstayid: psid})
+merge (ps)-[r:HAS_DIAG]->(d)",
+{batchSize: 5000, parallel:false}
+); 
+
+//Link Diagnosis to DiagString
+
+CALL apoc.periodic.iterate("match(d:Diagnosis) return d","
+unwind split(d.diagnosisstring,'|') as dsrow
+match (ds:DiagString {dx:dsrow})
+merge (d)-[r:RELATED_DS]->(ds)",
+{batchSize: 5000, parallel:false}
+); 
+
+CALL apoc.periodic.iterate("match(d:Diagnosis)-[r:RELATED_DS]->(ds:DiagString)
+return r","delete r",
+{batchSize: 5000, parallel:false}
+); 
+
+//Link Treatment to Diagnosis 
+
+CALL apoc.periodic.iterate("match(t:Treatment) return t","
+unwind split(t.treatmentstring,'|') as dsrow
+match (ds:DiagString {dx:dsrow})
+merge (t)-[r:Tr_RELATED_DS]->(ds)",
+{batchSize: 5000, parallel:false}
+);
+
+// import microLab
+LOAD CSV WITH HEADERS FROM 'file:///datathon/data/fulldata/microLab.csv.gz' AS row 
+MERGE (ml:MicroLab { microlabid: row.microlabid })
+        set ml.culturetakenoffset = toInteger(row.culturetakenoffset),
+         ml.organism = row.organism
+with ml,row
+match(ps:PatientUnitStay { patientunitstayid: row.patientunitstayid})
+merge (ps)-[r:HAS_MICROLAB]->(ml)
