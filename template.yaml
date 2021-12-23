@@ -2,29 +2,22 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: doctorai
 
-Parameters:
-  Neo4jPasswordString:
-    Type: String
-    Default: 'mysecretpassword'
-    NoEcho: true
-  FrontendRepoURL:
-    Type: String
-    Default: ''
-  AccessKey:
-    Type: String
-    Default: ''
-    NoEcho: true
-  AccessKeySecret:
-    Type: String
-    Default: ''
-    NoEcho: true
-  BotID:
-    Type: String
-    Default: ''
-  GithubOAuthToken:
-    Type: String
-    Default: ''
-    NoEcho: true
+#Parameters:
+  # FrontendGithubRepoURL:
+  #   Type: String
+  #   Default: ''
+  # AccessKey:
+  #   Type: String
+  #   Default: ''
+  #   NoEcho: true
+  # AccessKeySecret:
+  #   Type: String
+  #   Default: ''
+  #   NoEcho: true
+  # GithubOAuthToken:
+  #   Type: String
+  #   Default: ''
+  #   NoEcho: true
 
 Globals:
   Function:
@@ -34,7 +27,9 @@ Globals:
         language: 'en'
 
 
-Resources: 
+Resources:
+  # DocumentsBucket:
+  #   Type: AWS::S3::Bucket  
 
   Neo4jSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -59,8 +54,8 @@ Resources:
     Properties:
       SecurityGroupIds:
         - !Ref Neo4jSecurityGroup
-      ImageId: ami-0a041a294ad6458af
-      InstanceType: m4.large
+      ImageId: ami-0b3c6527e6a271287
+      InstanceType: r4.large
       KeyName : cloudformation
 
   LexLambdaTestRole:
@@ -74,6 +69,7 @@ Resources:
             Principal:
               Service:
               - lambda.amazonaws.com
+              - lexv2.amazonaws.com
             Action: "sts:AssumeRole"
       Path: "/"
       Policies: 
@@ -110,6 +106,7 @@ Resources:
       Runtime: python3.8
       Role: !GetAtt LexLambdaTestRole.Arn
       MemorySize: 128
+      FunctionName: LambdaForLex
       Environment:
         Variables:
           Neo4jIp: !GetAtt Neo4jInstance.PublicIp
@@ -120,38 +117,320 @@ Resources:
     Properties:
       Name: PasswordForNeo4j
       Description: This secret has a hardcoded password in SecretString (use GenerateSecretString instead)
-      SecretString: !Join ['', ['{"username":"neo4j","password":"', !Ref Neo4jPasswordString, '"}' ]]
+      SecretString: !Join ['', ['{"username":"neo4j","password":"s00pers3cret"}' ]]
 
 
-  Frontend:
-    Type: AWS::Amplify::App
+  #Frontend:
+    # Type: AWS::Amplify::App
+    # Properties: 
+    #   AccessToken: !Ref GithubOAuthToken
+      # EnvironmentVariables: 
+      #   - Name: REACT_APP_AWS_ACCESS_KEY
+      #     Value: !Ref AccessKey
+      #   - Name: REACT_APP_AWS_REGION
+      #     Value: !Ref "AWS::Region"
+      #   - Name: REACT_APP_AWS_SECRET
+      #     Value: !Ref AccessKeySecret
+      #   - Name: REACT_APP_AWS_USERID
+      #     Value: !Ref "AWS::AccountId"
+      #   - Name: REACT_APP_LEX_botAliasId
+      #     Value: !GetAtt DoctoraiLexAlias.BotAliasId
+      #   - Name: REACT_APP_LEX_botId
+      #     Value: !Ref DoctoraiLex
+      #   - Name: REACT_APP_LEX_localeId
+      #     Value: en_US
+      #   - Name: REACT_APP_LEX_sessionId
+      #     Value: test_session
+      #Name: Doctorai-frontend
+      #Repository: !Ref FrontendGithubRepoURL
+
+
+
+##Kendra
+  # KendraIndexRole:
+  #   Type: 'AWS::IAM::Role'
+  #   Properties:
+  #     RoleName: KendraIndexRoleforS3inDoctorai
+  #     AssumeRolePolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: kendra.amazonaws.com
+  #           Action: 'sts:AssumeRole'
+  #     Path: /
+  #     Policies:
+  #       - PolicyName: root
+  #         PolicyDocument:
+  #           Version: 2012-10-17
+  #           Statement:
+  #             - Effect: Allow
+  #               Action: 'cloudwatch:PutMetricData'
+  #               Resource: '*'
+  #               Condition:
+  #                 StringEquals:
+  #                   'cloudwatch:namespace': Kendra
+  #             - Effect: Allow
+  #               Action: 'logs:DescribeLogGroups'
+  #               Resource: '*'
+  #             - Effect: Allow
+  #               Action: 'logs:CreateLogGroup'
+  #               Resource: !Sub >-
+  #                 arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kendra/*
+  #             - Effect: Allow
+  #               Action:
+  #                 - 'logs:DescribeLogStreams'
+  #                 - 'logs:CreateLogStream'
+  #                 - 'logs:PutLogEvents'
+  #               Resource: !Sub >-
+  #                 arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kendra/*:log-stream:*
+  # KendraDataSourceRole:
+  #   Type: 'AWS::IAM::Role'
+  #   Properties:
+  #     RoleName: KendraDataSourceRoleforS3forDoctorai
+  #     AssumeRolePolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: kendra.amazonaws.com
+  #           Action: 'sts:AssumeRole'
+  #     Path: /
+  #     Policies:
+  #       - PolicyName: root
+  #         PolicyDocument:
+  #           Version: 2012-10-17
+  #           Statement:
+  #             - Action:
+  #                 - 's3:GetObject'
+  #               Resource:
+  #                 - !Join 
+  #                   - ''
+  #                   - - !GetAtt 
+  #                       - DocumentsBucket
+  #                       - Arn
+  #                     - /*
+  #               Effect: Allow
+  #             - Action:
+  #                 - 's3:ListBucket'
+  #               Resource:
+  #                 - !GetAtt 
+  #                   - DocumentsBucket
+  #                   - Arn
+  #               Effect: Allow
+  #             - Effect: Allow
+  #               Action:
+  #                 - 'kendra:BatchPutDocument'
+  #                 - 'kendra:BatchDeleteDocument'
+  #               Resource:
+  #                 - !Sub 
+  #                   - >-
+  #                     arn:aws:kendra:${AWS::Region}:${AWS::AccountId}:index/{index}
+  #                   - index: !Ref KendraIndex
+
+  # KendraFAQRole:
+  #   Type: 'AWS::IAM::Role'
+  #   Properties:
+  #     RoleName: KendraFAQRoleforS3
+  #     AssumeRolePolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: kendra.amazonaws.com
+  #           Action: 'sts:AssumeRole'
+  #     Path: /
+  #     Policies:
+  #       - PolicyName: root
+  #         PolicyDocument:
+  #           Version: 2012-10-17
+  #           Statement:
+  #             - Action:
+  #                 - 's3:GetObject'
+  #               Resource:
+  #                 - arn:aws:s3:::datathon-medium-file/* 
+  #               Effect: Allow
+  #             - Action:
+  #                 - 's3:ListBucket'
+  #               Resource:
+  #                 - arn:aws:s3:::datathon-medium-file
+  #               Effect: Allow
+  #             - Effect: Allow
+  #               Action:
+  #                 - 'kendra:BatchPutDocument'
+  #                 - 'kendra:BatchDeleteDocument'
+  #               Resource:
+  #                 - !Sub 
+  #                   - >-
+  #                     arn:aws:kendra:${AWS::Region}:${AWS::AccountId}:index/{index}
+  #                   - index: !Ref KendraIndex
+
+  # KendraIndex:
+  #   Type: 'AWS::Kendra::Index'
+  #   Properties:
+  #     Edition: DEVELOPER_EDITION
+  #     Name: DoctorAIKendraIndex
+  #     RoleArn: !GetAtt 
+  #       - KendraIndexRole
+  #       - Arn
+  # KendraDataSource:
+  #   Type: 'AWS::Kendra::DataSource'
+  #   Properties:
+  #     DataSourceConfiguration:
+  #       S3Configuration:
+  #         BucketName: !Ref DocumentsBucket
+  #     IndexId: !Ref KendraIndex
+  #     Name: DoctorAIKendraDataSource
+  #     RoleArn: !GetAtt 
+  #       - KendraDataSourceRole
+  #       - Arn
+  #     Type: S3
+
+  # KendraFAQ:
+  #   Type: AWS::Kendra::Faq
+  #   Properties: 
+  #     Description: Medical terms for Doctor.ai
+  #     FileFormat: CSV
+  #     IndexId: !Ref KendraIndex
+  #     Name: KendraFAQ
+  #     RoleArn: !GetAtt 
+  #       - KendraFAQRole
+  #       - Arn
+  #     S3Path: 
+  #       Bucket: datathon-medium-file
+  #       Key: medical_faq.csv
+      
+
+
+## Lex
+  # RoleForLex:
+  #   Type: 'AWS::IAM::Role'
+  #   Properties:
+  #     AWSServiceName: lexv2.amazonaws.com
+
+  PermissionToLambda:
+    Type: AWS::Lambda::Permission
     Properties: 
-      AccessToken: !Ref GithubOAuthToken
-      EnvironmentVariables: 
-        - Name: REACT_APP_AWS_ACCESS_KEY
-          Value: !Ref AccessKey
-        - Name: REACT_APP_AWS_REGION
-          Value: !Ref "AWS::Region"
-        - Name: REACT_APP_AWS_SECRET
-          Value: !Ref AccessKeySecret
-        - Name: REACT_APP_AWS_USERID
-          Value: !Ref "AWS::AccountId"
-        - Name: REACT_APP_LEX_botAliasId
-          Value: TestBotAlias
-        - Name: REACT_APP_LEX_botId
-          Value: !Ref BotID
-        - Name: REACT_APP_LEX_localeId
-          Value: en_US
-        - Name: REACT_APP_LEX_sessionId
-          Value: test_session
-      Name: Doctorai-frontend
-      Repository: !Ref FrontendRepoURL
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt 
+        - LexLambdaFunction
+        - Arn
+      Principal: lexv2.amazonaws.com
+      SourceArn: !Sub "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${DoctoraiLex.Id}/*"
 
+  RoleForLex:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: RoleforLex
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lexv2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AmazonLexV2BotPolicy 
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - "polly:SynthesizeSpeech"
+                  - "comprehend:DetectSentiment"
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - '*' 
+                Effect: Allow
+              # - Effect: Allow
+              #   Action:
+              #     - 'kendra:Query'
+              #   Resource:
+              #     - !Sub 
+              #       - >-
+              #         arn:aws:kendra:${AWS::Region}:${AWS::AccountId}:index/{index}
+              #       - index: !Ref KendraIndex
+
+
+  DoctoraiLex:
+    Type: AWS::Lex::Bot
+    Properties: 
+      BotFileS3Location: 
+        S3Bucket: datathon-medium-file
+        S3ObjectKey: doctorai-LexJson.zip
+      DataPrivacy:
+        ChildDirected: false
+      Description: Doctor AI Lex
+      Name: LexForDoctorai
+      RoleArn: !GetAtt 
+        - RoleForLex
+        - Arn
+      IdleSessionTTLInSeconds: 600
+      # BotLocales:
+      #   - LocaleId: "en_US"
+      #     Description: "Doctorai Lex"
+      #     NluConfidenceThreshold: 0.40
+      #     VoiceSettings:
+      #       VoiceId: "Ivy"
+      #     Intents:
+      #       - Description: MedicalTermsFAQ
+      #         KendraConfiguration:
+      #           KendraIndex: !GetAtt 
+      #             - KendraIndex
+      #             - Arn
+      #         Name: MedicalTermsFAQ
+      #         ParentIntentSignature: AMAZON.KendraSearchIntent
+      #         FulfillmentCodeHook:
+      #           Enabled: false
+      #           PostFulfillmentStatusSpecification:
+      #             SuccessResponse:
+      #               MessageGroupsList:
+      #                 - Message: 
+      #                     PlainTextMessage:
+      #                       Value: "((x-amz-lex:kendra-search-response-answer-1))"
+      #                   Variations:
+      #                     - PlainTextMessage:
+      #                         Value: "((x-amz-lex:kendra-search-response-question_answer-answer-1))"
+      
+
+
+  # LexVersion:
+  #     DependsOn: DoctoraiLex
+  #     Type: AWS::Lex::BotVersion
+  #     Properties:
+  #       BotId: !Ref DoctoraiLex
+  #       BotVersionLocaleSpecification:
+  #         - LocaleId: en_US
+  #           BotVersionLocaleDetails:
+  #             SourceBotVersion: DRAFT
+  #       Description: DoctoraiLex Version
+  
+  
+  # DoctoraiLexAlias:
+  #   DependsOn: LexVersion
+  #   Type: AWS::Lex::BotAlias
+  #   Properties:
+  #     BotId: !Ref DoctoraiLex
+  #     BotAliasName: "DoctoraiLexAlias"
+  #     BotVersion: !GetAtt LexVersion.BotVersion
+  #     SentimentAnalysisSettings:
+  #       DetectSentiment: true
+      # BotAliasLocaleSettings:
+      #   - Key: ""
+      #     Value: ""
+      #     BotAliasLocaleSetting:
+      #       CodeHookSpecification: 
+      #         LambdaCodeHook:
+      #           CodeHookInterfaceVersion: 1
+      #           LambdaArn: !GetAtt 
+      #             - LexLambdaFunction
+      #             - Arn
+      #       Enabled: true
 
 Outputs: 
-  LexLambdaFunctionName:
-    Description: The name of lex lambda function
-    Value: !Ref LexLambdaFunction
+  # LexLambdaFunctionName:
+  #   Description: The name of lex lambda function
+  #   Value: !Ref LexLambdaFunction
 
   Neo4jInstancePublicIp:
     Description: The public IP address of the Neo4j server
@@ -161,6 +440,18 @@ Outputs:
     Description: The public domain name of the Neo4j server
     Value: !GetAtt Neo4jInstance.PublicDnsName
 
-  FrontendURL:
-    Description: The public domain name of the React Frondend
-    Value: !GetAtt Frontend.DefaultDomain
+  # FrontendURL:
+  #   Description: The public domain name of the React Frondend
+  #   Value: !GetAtt Frontend.DefaultDomain
+
+  # BotAlias:
+  #   Description: The Alias id of bot
+  #   Value: !GetAtt DoctoraiLexAlias.BotAliasId
+
+  BotID:
+    Description: The id of the bot
+    Value: !Ref DoctoraiLex
+
+  
+  PermissionString:
+    Value: !Sub "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${DoctoraiLex.Id}/*"

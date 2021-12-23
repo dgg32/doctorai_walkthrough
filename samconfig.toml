@@ -10,4 +10,4 @@ confirm_changeset = true
 capabilities = "CAPABILITY_NAMED_IAM"
 disable_rollback = true
 image_repositories = []
-parameter_overrides = "FrontendRepoURL=\"https://github.com/dgg32/doctorai-ui\" BotID=\"FEINSTMDCU\""
+parameter_overrides = "FrontendRepoURL=\"https://github.com/dgg32/doctorai-ui\""

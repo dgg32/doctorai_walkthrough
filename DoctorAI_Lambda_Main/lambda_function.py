@@ -73,15 +73,15 @@ def get_password_from_secret():
 
 password = get_password_from_secret()
 Neo4jIp = os.environ['Neo4jIp']
-conn = Neo4jConnection(uri=f"neo4j://{Neo4jIp}:7687", user='neo', pwd=password)
-db = "datathon"
+conn = Neo4jConnection(uri=f"neo4j://{Neo4jIp}:7687", user='neo4j', pwd=password)
+db = "neo4j"
 
 def dispatch(intent_request):
     global password, Neo4jIp, conn, db
     intent_name = intent_request['sessionState']['intent']['name']
     response = None
 
-    #print (f"Password is {password}")
+    #print (f"Password: {password}; Neo4jIp: {Neo4jIp}; db: {db}")
     
     
     
@@ -286,22 +286,22 @@ def hello(intent_request, conn, db):
     session_attributes = get_session_attributes(intent_request)
     
     slots = get_slots(intent_request)
-    input_doctor_name = get_slot(intent_request, 'doctor_name').title()
-    input_doctor_name = re.sub(r"[^a-zA-Z0-9]","",input_doctor_name)
+    # input_doctor_name = get_slot(intent_request, 'doctor_name').title()
+    # input_doctor_name = re.sub(r"[^a-zA-Z0-9]","",input_doctor_name)
     
-    query = f"MATCH (d:Doctor{{nickname:'{input_doctor_name}'}}) RETURN d.name AS doctor_name, d.nickname AS nickname"
-    result = conn.query(query,db=db)
-    result_doctor_name = None
-    if result:
-        result_doctor_name = result[0]["doctor_name"]
+    # query = f"MATCH (d:Doctor{{nickname:'{input_doctor_name}'}}) RETURN d.name AS doctor_name, d.nickname AS nickname"
+    # result = conn.query(query,db=db)
+    # result_doctor_name = None
+    # if result:
+    #     result_doctor_name = result[0]["doctor_name"]
     
-    if result_doctor_name:
-        text = f"Welcome back, {result_doctor_name}! How can I help?"
-    else:
-        raise Exception(f'{result_doctor_name} does not exist!')
+    # if result_doctor_name:
+    #     text = f"Welcome back, {result_doctor_name}! How can I help?"
+    # else:
+    #     raise Exception(f'{result_doctor_name} does not exist!')
     message =  {
             'contentType': 'PlainText',
-            'content': text
+            'content': "Hello. How can I help?"
         }
     fulfillment_state = "Fulfilled"    
     return close(intent_request, session_attributes, fulfillment_state, message)

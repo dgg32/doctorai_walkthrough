@@ -133,7 +133,7 @@ merge (t)-[r:Tr_RELATED_DS]->(ds)",
 );
 
 // import microLab
-LOAD CSV WITH HEADERS FROM 'file:///datathon/data/fulldata/microLab.csv.gz' AS row 
+LOAD CSV WITH HEADERS FROM 'file:///microLab.csv.gz' AS row 
 MERGE (ml:MicroLab { microlabid: row.microlabid })
         set ml.culturetakenoffset = toInteger(row.culturetakenoffset),
          ml.organism = row.organism
