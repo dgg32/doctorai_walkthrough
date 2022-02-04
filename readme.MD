@@ -24,6 +24,10 @@ Chrome
 
 # Run
 
+# The definition of Lex
+
+Currently, the deployment of Lex is a bit awkward. The source code in this repository needs to be uploaded to an S3. The bucket and file name are defined in Line 359 and 360 in the template.yaml file for CloudFormation before the sam build command. Otherwise, you will only deploy the same Lex from my s3://datathon-medium-file/doctorai-LexJson.zip.
+
 ## build the bundle
 sam build
 
